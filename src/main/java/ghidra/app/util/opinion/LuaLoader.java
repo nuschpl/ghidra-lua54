@@ -93,7 +93,14 @@ public class LuaLoader extends AbstractProgramWrapperLoader {
 
 		LuaFunctionProto top;
 		try {
-			top = new LuaUndump(provider).parse();
+			LuaUndump undump = new LuaUndump(provider);
+			top = undump.parse();
+			if (!undump.hasNumericChecks()) {
+				settings.log().appendMsg(getName(), String.format(
+					"Size-optimized chunk variant: no LUAC_INT/LUAC_NUM; sentinel byte 0x%02x " +
+						"(seen in lua-eco / OpenWrt builds).",
+					undump.getSentinelByte() & 0xff));
+			}
 		}
 		catch (IOException e) {
 			throw new IOException("Failed to parse Lua 5.4 chunk: " + e.getMessage(), e);

@@ -62,6 +62,11 @@ public class LuaUndump {
 	private int mainUpvalueCount;
 	private LuaFunctionProto topProto;
 
+	/** False when the chunk omits the LUAC_INT/LUAC_NUM numeric checks (size-optimized variant). */
+	private boolean numericChecksPresent = true;
+	/** The sentinel byte that replaces the numeric block in the variant, or -1 if standard. */
+	private int sentinelByte = -1;
+
 	public LuaUndump(ByteProvider provider) throws IOException {
 		this.reader = new BinaryReader(provider, true /* little-endian */);
 		this.fileLength = provider.length();
@@ -121,6 +126,16 @@ public class LuaUndump {
 		return mainUpvalueCount;
 	}
 
+	/** @return true for a standard chunk, false for the no-numeric-checks variant. */
+	public boolean hasNumericChecks() {
+		return numericChecksPresent;
+	}
+
+	/** @return the variant's sentinel byte (replacing LUAC_INT/LUAC_NUM), or -1 if standard. */
+	public int getSentinelByte() {
+		return sentinelByte;
+	}
+
 	private void checkHeader() throws IOException {
 		byte[] sig = reader.readNextByteArray(SIGNATURE.length);
 		for (int i = 0; i < SIGNATURE.length; i++) {
@@ -155,14 +170,27 @@ public class LuaUndump {
 		if (numSize != LUA_NUMBER_SIZE) {
 			throw new IOException("Unexpected lua_Number size: " + numSize + " (expected 8)");
 		}
-		long luacInt = reader.readNextLong();
-		if (luacInt != LUAC_INT) {
-			throw new IOException(String.format(
-				"Integer endianness check failed: expected 0x5678, found 0x%x", luacInt));
+		// Standard 5.4 chunks store LUAC_INT (lua_Integer 0x5678) and LUAC_NUM
+		// (lua_Number 370.5) here as endianness / float-format checks. Some size-optimized
+		// builds omit both: observed in lua-eco / OpenWrt MT798x (musl, aarch64) chunks
+		// compiled with Lua 5.4.7, where a single sentinel byte appears after the size
+		// fields in place of the 16-byte numeric block, immediately before the main
+		// closure's upvalue count. Auto-detect by peeking for LUAC_INT; if it is not there,
+		// treat the chunk as the no-numeric-checks variant.
+		long afterSizes = reader.getPointerIndex();
+		if (reader.length() - afterSizes >= 8 && reader.readNextLong() == LUAC_INT) {
+			double luacNum = Double.longBitsToDouble(reader.readNextLong());
+			if (luacNum != LUAC_NUM) {
+				throw new IOException("Float format check failed: expected 370.5, found " + luacNum);
+			}
+			numericChecksPresent = true;
 		}
-		double luacNum = Double.longBitsToDouble(reader.readNextLong());
-		if (luacNum != LUAC_NUM) {
-			throw new IOException("Float format check failed: expected 370.5, found " + luacNum);
+		else {
+			// Variant: no LUAC_INT / LUAC_NUM. Rewind and consume the one-byte sentinel
+			// that precedes the upvalue count in these chunks.
+			reader.setPointerIndex(afterSizes);
+			sentinelByte = readByte();
+			numericChecksPresent = false;
 		}
 	}
 

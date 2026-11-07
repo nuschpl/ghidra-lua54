@@ -14,6 +14,10 @@ other binary; no knowledge of Ghidra internals is required to use it.
   + format `0x00` + `LUAC_DATA = 19 93 0D 0A 1A 0A`, with
   `sizeof(Instruction)=4`, `sizeof(lua_Integer)=8`, `sizeof(lua_Number)=8`,
   `LUAC_INT=0x5678`, `LUAC_NUM=370.5`.
+* **Size-optimized variant also handled:** some embedded builds (observed in
+  **lua-eco / OpenWrt MT798x**, musl aarch64, Lua 5.4.7) omit the `LUAC_INT`/`LUAC_NUM`
+  numeric-check block and emit a single sentinel byte in its place. The loader auto-detects
+  this (no option needed) and parses it like a standard chunk.
 * **Not supported:** other Lua versions (5.1/5.2/5.3 use a different version byte and a
   different instruction layout — they are explicitly rejected), and chunks compiled with
   non-default `lua_Integer`/`lua_Number` sizes (e.g. 32-bit builds). See *Limitations*.
