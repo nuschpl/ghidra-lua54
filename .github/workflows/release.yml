@@ -80,6 +80,14 @@ jobs:
           "${GHIDRA_INSTALL_DIR}/support/sleigh" data/languages/lua54.slaspec
       - name: Build extension (offline)
         run: gradle buildExtension -PGHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR}" --offline
+      - name: Name the asset
+        run: |
+          set -euo pipefail
+          cd dist
+          f=$(ls ghidra_*_LuaBytecode.zip)
+          ver=$(printf '%s' "$f" | sed -E 's/^ghidra_([0-9]+\.[0-9]+(\.[0-9]+)?)_.*/\1/')
+          mv "$f" "LuaBytecode-ghidra-extension-${ver}.zip"
+          ls -la
       - uses: actions/upload-artifact@v4
         with:
           name: ext-public
@@ -100,6 +108,13 @@ jobs:
           test -x "${PROVIDED_GHIDRA}/support/sleigh" || { echo "::error::GHIDRA_INSTALL_DIR invalid"; exit 1; }
           "${PROVIDED_GHIDRA}/support/sleigh" data/languages/lua54.slaspec
           gradle buildExtension -PGHIDRA_INSTALL_DIR="${PROVIDED_GHIDRA}" --offline
+      - name: Name the asset
+        run: |
+          set -euo pipefail
+          cd dist
+          f=$(ls ghidra_*_LuaBytecode.zip)
+          ver=$(printf '%s' "$f" | sed -E 's/^ghidra_([0-9]+\.[0-9]+(\.[0-9]+)?)_.*/\1/')
+          mv "$f" "LuaBytecode-ghidra-extension-${ver}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: ext-ours
