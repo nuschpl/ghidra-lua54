@@ -49,3 +49,7 @@ buildExtension.exclude ".git/**"
 buildExtension.exclude ".github/**"
 buildExtension.exclude ".gitignore"
 buildExtension.exclude "**/.DS_Store"
+// Safety net: never let a Ghidra install/zip left in the working dir get packaged.
+buildExtension.exclude "ghidra.zip"
+buildExtension.exclude "ghidra_install/**"
+buildExtension.exclude "ghidra_*_PUBLIC*/**"

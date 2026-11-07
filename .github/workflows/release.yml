@@ -42,11 +42,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.1.0'
+      # IMPORTANT: Ghidra is downloaded/unpacked OUTSIDE the repo checkout ($RUNNER_TEMP),
+      # so buildExtension (which zips the module directory) never sweeps it into the
+      # extension zip. Keeping it in the repo root produced a ~1 GB zip.
       - name: Cache Ghidra release zip
         id: cache-ghidra
         uses: actions/cache@v4
         with:
-          path: ghidra.zip
+          path: ${{ runner.temp }}/ghidra.zip
           key: ghidra-zip-${{ env.GHIDRA_TAG }}-${{ env.GHIDRA_SHA256 }}
       - name: Download pinned public Ghidra (cache miss only)
         if: steps.cache-ghidra.outputs.cache-hit != 'true'
@@ -56,19 +59,20 @@ jobs:
           url=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api" \
                 | jq -r '.assets[] | select(.name | test("ghidra_.*_PUBLIC_.*\\.zip$")) | .browser_download_url' | head -1)
           [ -n "$url" ] && [ "$url" != "null" ] || { echo "::error::Cannot resolve Ghidra asset for ${GHIDRA_TAG}"; exit 1; }
-          curl -fsSL -o ghidra.zip "$url"
-      - name: Verify checksum & unpack Ghidra
+          curl -fsSL -o "$RUNNER_TEMP/ghidra.zip" "$url"
+      - name: Verify checksum & unpack Ghidra (outside the repo)
         run: |
           set -euo pipefail
+          z="$RUNNER_TEMP/ghidra.zip"
           if [ -z "${GHIDRA_SHA256}" ]; then
             echo "::error::GHIDRA_SHA256 is not set. A pin is a version PLUS an immutable identifier; the tag alone is not a pin."
-            [ -f ghidra.zip ] && { echo "zip SHA-256 (verify against the NSA release page, then set GHIDRA_SHA256):"; sha256sum ghidra.zip; }
+            [ -f "$z" ] && { echo "zip SHA-256 (verify against the NSA release page, then set GHIDRA_SHA256):"; sha256sum "$z"; }
             exit 1
           fi
           # Verified on every run, including cache hits (the cache key is also pinned to the SHA).
-          echo "${GHIDRA_SHA256}  ghidra.zip" | sha256sum -c -
-          unzip -q ghidra.zip -d ghidra_install
-          dir=$(find "$PWD/ghidra_install" -maxdepth 1 -type d -name 'ghidra_*_PUBLIC*' | head -1)
+          echo "${GHIDRA_SHA256}  ${z}" | sha256sum -c -
+          unzip -q "$z" -d "$RUNNER_TEMP/ghidra_install"
+          dir=$(find "$RUNNER_TEMP/ghidra_install" -maxdepth 1 -type d -name 'ghidra_*_PUBLIC*' | head -1)
           [ -n "$dir" ] || { echo "::error::Ghidra install dir not found"; exit 1; }
           echo "GHIDRA_INSTALL_DIR=$dir" >> "$GITHUB_ENV"
       - name: Compile SLEIGH
