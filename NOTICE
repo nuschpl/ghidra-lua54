@@ -1,0 +1,17 @@
+ghidra-lua54
+Copyright 2026 nuschpl
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This is an independent, third-party Ghidra extension. It is built against and
+designed for Ghidra (https://ghidra-sre.org) but is NOT affiliated with,
+endorsed by, or a product of the National Security Agency or the Ghidra
+project. "Ghidra" is a trademark of its respective owner.
+
+The "DO NOT MODIFY" section of build.gradle is derived from the Ghidra
+extension build template, Copyright the Ghidra project, Apache License 2.0.
+
+The Lua 5.4 instruction set, bytecode (lundump) chunk format, and opcode
+semantics modeled by this extension were derived from the public Lua 5.4.7
+reference source (https://www.lua.org/), Copyright Lua.org, PUC-Rio (MIT
+License). No Lua source code is included or redistributed here.

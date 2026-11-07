@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<processor_spec>
+  <programcounter register="pc"/>
+
+  <inferptrbounds>
+    <!-- Do not infer pointers from constants in the body of a function;
+         Lua register values are tagged VM values, not raw addresses. -->
+    <range space="ram" first="0" last="0"/>
+  </inferptrbounds>
+
+</processor_spec>

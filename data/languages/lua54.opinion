@@ -1,0 +1,5 @@
+<opinions>
+    <constraint loader="Lua 5.4 bytecode (luac)" compilerSpecID="default">
+        <constraint primary="84" processor="Lua" endian="little" size="32" variant="default" />
+    </constraint>
+</opinions>

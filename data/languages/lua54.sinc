@@ -1,0 +1,346 @@
+#------------------------------------------------------------------------------------
+#  Lua 5.4 bytecode - SLEIGH model
+#------------------------------------------------------------------------------------
+#
+#  Instruction word: 32-bit little-endian.
+#
+#    31      24 23      16 15 14       7 6         0
+#   +----------+----------+--+----------+-----------+
+#   |    C(8)  |   B(8)   |k |   A(8)   |   Op(7)   |   iABC
+#   +----------+----------+--+----------+-----------+
+#   |         Bx(17)         |   A(8)   |   Op(7)   |   iABx  / iAsBx
+#   +------------------------+----------+-----------+
+#   |              Ax(25)               |   Op(7)   |   iAx
+#   +-----------------------------------+-----------+
+#   |              sJ(25)               |   Op(7)   |   isJ
+#   +-----------------------------------+-----------+
+#
+#  Signed arguments use excess-K, NOT two's complement:
+#     sBx = Bx - 65535      (OFFSET_sBx = (2^17-1)>>1)
+#     sJ  = sJraw - 16777215 (OFFSET_sJ  = (2^25-1)>>1)
+#     sB  = B - 127,  sC = C - 127   (OFFSET_sC = 255>>1)
+#
+#  Registers R[0..255] are modeled as an addressable register space, 8 bytes/slot
+#  (a Lua value payload is a 64-bit integer or a 64-bit double).
+#
+#  Constants K[], upvalues U[], and nested prototypes P[] are PER-prototype and
+#  cannot be resolved from a single instruction, so they are referenced by index
+#  through CALLOTHER p-code ops (luaLoadK, luaGetUpval, ...). The loader attaches
+#  end-of-line comments resolving each constant's value at the use site.
+#------------------------------------------------------------------------------------
+
+define endian=little;
+define alignment=4;
+
+define space ram      type=ram_space      size=4  default;
+define space register type=register_space size=4;
+
+# Lua register window R[0..255], 8 bytes each (offset = index * 8).
+define register offset=0x0 size=8 [
+    r0   r1   r2   r3   r4   r5   r6   r7   r8   r9   r10  r11  r12  r13  r14  r15
+    r16  r17  r18  r19  r20  r21  r22  r23  r24  r25  r26  r27  r28  r29  r30  r31
+    r32  r33  r34  r35  r36  r37  r38  r39  r40  r41  r42  r43  r44  r45  r46  r47
+    r48  r49  r50  r51  r52  r53  r54  r55  r56  r57  r58  r59  r60  r61  r62  r63
+    r64  r65  r66  r67  r68  r69  r70  r71  r72  r73  r74  r75  r76  r77  r78  r79
+    r80  r81  r82  r83  r84  r85  r86  r87  r88  r89  r90  r91  r92  r93  r94  r95
+    r96  r97  r98  r99  r100 r101 r102 r103 r104 r105 r106 r107 r108 r109 r110 r111
+    r112 r113 r114 r115 r116 r117 r118 r119 r120 r121 r122 r123 r124 r125 r126 r127
+    r128 r129 r130 r131 r132 r133 r134 r135 r136 r137 r138 r139 r140 r141 r142 r143
+    r144 r145 r146 r147 r148 r149 r150 r151 r152 r153 r154 r155 r156 r157 r158 r159
+    r160 r161 r162 r163 r164 r165 r166 r167 r168 r169 r170 r171 r172 r173 r174 r175
+    r176 r177 r178 r179 r180 r181 r182 r183 r184 r185 r186 r187 r188 r189 r190 r191
+    r192 r193 r194 r195 r196 r197 r198 r199 r200 r201 r202 r203 r204 r205 r206 r207
+    r208 r209 r210 r211 r212 r213 r214 r215 r216 r217 r218 r219 r220 r221 r222 r223
+    r224 r225 r226 r227 r228 r229 r230 r231 r232 r233 r234 r235 r236 r237 r238 r239
+    r240 r241 r242 r243 r244 r245 r246 r247 r248 r249 r250 r251 r252 r253 r254 r255
+];
+
+# Housekeeping registers (0x800 is past the end of the 256*8 = 0x800 window).
+define register offset=0x800 size=4 [ sp pc ];
+
+#------------------------------------------------------------------------------------
+# Instruction token and fields
+#------------------------------------------------------------------------------------
+define token instr (32)
+    op    = (0,6)
+    a     = (7,14)
+    kk    = (15,15)
+    b     = (16,23)
+    c     = (24,31)
+    bx    = (15,31)
+    ax    = (7,31)
+    sjf   = (7,31)
+;
+
+#------------------------------------------------------------------------------------
+# p-code userops (opaque VM operations)
+#------------------------------------------------------------------------------------
+define pcodeop luaLoadK;
+define pcodeop luaLoadKx;
+define pcodeop luaLoadNil;
+define pcodeop luaGetUpval;
+define pcodeop luaSetUpval;
+define pcodeop luaGetTabUp;
+define pcodeop luaGetTable;
+define pcodeop luaGetI;
+define pcodeop luaGetField;
+define pcodeop luaSetTabUp;
+define pcodeop luaSetTable;
+define pcodeop luaSetI;
+define pcodeop luaSetField;
+define pcodeop luaNewTable;
+define pcodeop luaSelf;
+define pcodeop luaMod;
+define pcodeop luaPow;
+define pcodeop luaDiv;
+define pcodeop luaIDiv;
+define pcodeop luaShl;
+define pcodeop luaShr;
+define pcodeop luaMMBin;
+define pcodeop luaMMBinI;
+define pcodeop luaMMBinK;
+define pcodeop luaLen;
+define pcodeop luaConcat;
+define pcodeop luaClose;
+define pcodeop luaTbc;
+define pcodeop luaCall;
+define pcodeop luaTailCall;
+define pcodeop luaReturn;
+define pcodeop luaForPrep;
+define pcodeop luaForLoop;
+define pcodeop luaTForPrep;
+define pcodeop luaTForCall;
+define pcodeop luaTForLoop;
+define pcodeop luaSetList;
+define pcodeop luaClosure;
+define pcodeop luaVararg;
+define pcodeop luaVarargPrep;
+define pcodeop luaExtraArg;
+
+#------------------------------------------------------------------------------------
+# Register operands (export the register varnode at index*8)
+#------------------------------------------------------------------------------------
+RA:  rA  is a  [ rA  = a * 8;       ] { export *[register]:8 rA;  }
+RA1: rA1 is a  [ rA1 = (a + 1) * 8; ] { export *[register]:8 rA1; }
+RB:  rB  is b  [ rB  = b * 8;       ] { export *[register]:8 rB;  }
+RC:  rC  is c  [ rC  = c * 8;       ] { export *[register]:8 rC;  }
+
+#------------------------------------------------------------------------------------
+# Signed immediate operands (excess-K decoded at disassembly time)
+#------------------------------------------------------------------------------------
+SBX: sv is bx [ sv = bx - 65535; ] { export *[const]:8 sv; }
+SBv: sv is b  [ sv = b - 127;    ] { export *[const]:8 sv; }
+SCv: sv is c  [ sv = c - 127;    ] { export *[const]:8 sv; }
+
+#------------------------------------------------------------------------------------
+# Index operands for the constant / upvalue / prototype pools (display + const)
+#------------------------------------------------------------------------------------
+Kbx: "K["^bx^"]" is bx { export *[const]:8 bx; }
+Kb:  "K["^b^"]"  is b  { export *[const]:8 b;  }
+Kc:  "K["^c^"]"  is c  { export *[const]:8 c;  }
+Ub:  "U["^b^"]"  is b  { export *[const]:8 b;  }
+Ua:  "U["^a^"]"  is a  { export *[const]:8 a;  }
+Pbx: "P["^bx^"]" is bx { export *[const]:8 bx; }
+
+# RK(C): R[C] when k==0, K[C] when k==1
+RKC: RC is kk=0 & RC { export RC; }
+RKC: Kc is kk=1 & Kc { export Kc; }
+
+#------------------------------------------------------------------------------------
+# Computed branch destinations (hidden operands, matched via epsilon / Bx / sJ)
+#------------------------------------------------------------------------------------
+SKIP1:  dst is epsilon [ dst = inst_start + 8;                       ] { export *[ram]:4 dst; } # pc++ : skip next insn
+JDEST:  dst is sjf     [ dst = inst_start + 4 + (sjf - 16777215) * 4; ] { export *[ram]:4 dst; } # JMP
+FDEST:  dst is bx      [ dst = inst_start + 4 + (bx + 1) * 4;         ] { export *[ram]:4 dst; } # FORPREP forward exit
+BDEST:  dst is bx      [ dst = inst_start + 4 - bx * 4;               ] { export *[ram]:4 dst; } # FORLOOP/TFORLOOP back edge
+TPDEST: dst is bx      [ dst = inst_start + 4 + bx * 4;               ] { export *[ram]:4 dst; } # TFORPREP forward
+
+#====================================================================================
+# Instructions
+#====================================================================================
+
+# 0  MOVE  A B : R[A] := R[B]
+:MOVE RA, RB is op=0 & RA & RB { RA = RB; }
+
+# 1  LOADI A sBx : R[A] := sBx
+:LOADI RA, SBX is op=1 & RA & SBX { RA = SBX; }
+
+# 2  LOADF A sBx : R[A] := (lua_Number)sBx
+:LOADF RA, SBX is op=2 & RA & SBX { RA = int2float(SBX); }
+
+# 3  LOADK A Bx : R[A] := K[Bx]
+:LOADK RA, Kbx is op=3 & RA & Kbx { RA = luaLoadK(Kbx); }
+
+# 4  LOADKX A : R[A] := K[extra arg]
+:LOADKX RA is op=4 & RA { RA = luaLoadKx(); }
+
+# 5  LOADFALSE A : R[A] := false
+:LOADFALSE RA is op=5 & RA { RA = 0; }
+
+# 6  LFALSESKIP A : R[A] := false; pc++
+:LFALSESKIP RA is op=6 & RA & SKIP1 { RA = 0; goto SKIP1; }
+
+# 7  LOADTRUE A : R[A] := true
+:LOADTRUE RA is op=7 & RA { RA = 1; }
+
+# 8  LOADNIL A B : R[A], ..., R[A+B] := nil
+:LOADNIL RA, b is op=8 & RA & b { local n:4 = b; RA = 0; luaLoadNil(RA, n); }
+
+# 9  GETUPVAL A B : R[A] := UpValue[B]
+:GETUPVAL RA, Ub is op=9 & RA & Ub { RA = luaGetUpval(Ub); }
+
+# 10 SETUPVAL A B : UpValue[B] := R[A]
+:SETUPVAL Ub, RA is op=10 & RA & Ub { luaSetUpval(Ub, RA); }
+
+# 11 GETTABUP A B C : R[A] := UpValue[B][K[C]]
+:GETTABUP RA, Ub, Kc is op=11 & RA & Ub & Kc { RA = luaGetTabUp(Ub, Kc); }
+
+# 12 GETTABLE A B C : R[A] := R[B][R[C]]
+:GETTABLE RA, RB, RC is op=12 & RA & RB & RC { RA = luaGetTable(RB, RC); }
+
+# 13 GETI A B C : R[A] := R[B][C]
+:GETI RA, RB, c is op=13 & RA & RB & c { local i:4 = c; RA = luaGetI(RB, i); }
+
+# 14 GETFIELD A B C : R[A] := R[B][K[C]]
+:GETFIELD RA, RB, Kc is op=14 & RA & RB & Kc { RA = luaGetField(RB, Kc); }
+
+# 15 SETTABUP A B C : UpValue[A][K[B]] := RK(C)
+:SETTABUP Ua, Kb, RKC is op=15 & Ua & Kb & RKC { luaSetTabUp(Ua, Kb, RKC); }
+
+# 16 SETTABLE A B C : R[A][R[B]] := RK(C)
+:SETTABLE RA, RB, RKC is op=16 & RA & RB & RKC { luaSetTable(RA, RB, RKC); }
+
+# 17 SETI A B C : R[A][B] := RK(C)
+:SETI RA, b, RKC is op=17 & RA & b & RKC { local i:4 = b; luaSetI(RA, i, RKC); }
+
+# 18 SETFIELD A B C : R[A][K[B]] := RK(C)
+:SETFIELD RA, Kb, RKC is op=18 & RA & Kb & RKC { luaSetField(RA, Kb, RKC); }
+
+# 19 NEWTABLE A B C k : R[A] := {}
+:NEWTABLE RA, b, c is op=19 & RA & b & c { local sz:4 = b; local asz:4 = c; RA = luaNewTable(sz, asz); }
+
+# 20 SELF A B C : R[A+1] := R[B]; R[A] := R[B][RK(C)]
+:SELF RA, RB, RKC is op=20 & RA & RA1 & RB & RKC { RA1 = RB; RA = luaSelf(RB, RKC); }
+
+# 21 ADDI A B sC : R[A] := R[B] + sC
+:ADDI RA, RB, SCv is op=21 & RA & RB & SCv { RA = RB + SCv; }
+
+# 22-28 arithmetic with numeric constant K[C]
+:ADDK  RA, RB, Kc is op=22 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = RB + k; }
+:SUBK  RA, RB, Kc is op=23 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = RB - k; }
+:MULK  RA, RB, Kc is op=24 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = RB * k; }
+:MODK  RA, RB, Kc is op=25 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = luaMod(RB, k); }
+:POWK  RA, RB, Kc is op=26 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = luaPow(RB, k); }
+:DIVK  RA, RB, Kc is op=27 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = luaDiv(RB, k); }
+:IDIVK RA, RB, Kc is op=28 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = luaIDiv(RB, k); }
+
+# 29-31 bitwise with integer constant K[C]
+:BANDK RA, RB, Kc is op=29 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = RB & k; }
+:BORK  RA, RB, Kc is op=30 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = RB | k; }
+:BXORK RA, RB, Kc is op=31 & RA & RB & Kc { local k:8 = luaLoadK(Kc); RA = RB ^ k; }
+
+# 32 SHRI A B sC : R[A] := R[B] >> sC
+:SHRI RA, RB, SCv is op=32 & RA & RB & SCv { RA = luaShr(RB, SCv); }
+# 33 SHLI A B sC : R[A] := sC << R[B]
+:SHLI RA, RB, SCv is op=33 & RA & RB & SCv { RA = luaShl(SCv, RB); }
+
+# 34-45 arithmetic / bitwise register-register
+:ADD  RA, RB, RC is op=34 & RA & RB & RC { RA = RB + RC; }
+:SUB  RA, RB, RC is op=35 & RA & RB & RC { RA = RB - RC; }
+:MUL  RA, RB, RC is op=36 & RA & RB & RC { RA = RB * RC; }
+:MOD  RA, RB, RC is op=37 & RA & RB & RC { RA = luaMod(RB, RC); }
+:POW  RA, RB, RC is op=38 & RA & RB & RC { RA = luaPow(RB, RC); }
+:DIV  RA, RB, RC is op=39 & RA & RB & RC { RA = luaDiv(RB, RC); }
+:IDIV RA, RB, RC is op=40 & RA & RB & RC { RA = luaIDiv(RB, RC); }
+:BAND RA, RB, RC is op=41 & RA & RB & RC { RA = RB & RC; }
+:BOR  RA, RB, RC is op=42 & RA & RB & RC { RA = RB | RC; }
+:BXOR RA, RB, RC is op=43 & RA & RB & RC { RA = RB ^ RC; }
+:SHL  RA, RB, RC is op=44 & RA & RB & RC { RA = luaShl(RB, RC); }
+:SHR  RA, RB, RC is op=45 & RA & RB & RC { RA = luaShr(RB, RC); }
+
+# 46-48 metamethod fixups (follow an arithmetic op)
+:MMBIN  RA, RB, c is op=46 & RA & RB & c { local tm:4 = c; luaMMBin(RA, RB, tm); }
+:MMBINI RA, SBv, c is op=47 & RA & SBv & c { local tm:4 = c; luaMMBinI(RA, SBv, tm); }
+:MMBINK RA, Kb, c is op=48 & RA & Kb & c { local tm:4 = c; luaMMBinK(RA, Kb, tm); }
+
+# 49-52 unary
+:UNM  RA, RB is op=49 & RA & RB { RA = -RB; }
+:BNOT RA, RB is op=50 & RA & RB { RA = ~RB; }
+:NOT  RA, RB is op=51 & RA & RB { RA = zext(RB == 0); }
+:LEN  RA, RB is op=52 & RA & RB { RA = luaLen(RB); }
+
+# 53 CONCAT A B : R[A] := R[A] .. ... .. R[A+B-1]
+:CONCAT RA, b is op=53 & RA & b { local n:4 = b; RA = luaConcat(RA, n); }
+
+# 54 CLOSE A : close upvalues >= R[A]
+:CLOSE RA is op=54 & RA { luaClose(RA); }
+
+# 55 TBC A : mark R[A] to-be-closed
+:TBC RA is op=55 & RA { luaTbc(RA); }
+
+# 56 JMP sJ : pc += sJ
+:JMP JDEST is op=56 & JDEST { goto JDEST; }
+
+# 57-59 comparisons between registers, followed by a JMP (skipped via pc++)
+:EQ RA, RB is op=57 & RA & RB & kk & SKIP1 { local cnd:1 = RA == RB;  if (cnd != kk) goto SKIP1; }
+:LT RA, RB is op=58 & RA & RB & kk & SKIP1 { local cnd:1 = RA s< RB;  if (cnd != kk) goto SKIP1; }
+:LE RA, RB is op=59 & RA & RB & kk & SKIP1 { local cnd:1 = RA s<= RB; if (cnd != kk) goto SKIP1; }
+
+# 60-65 comparisons with constant / immediate
+:EQK RA, Kb  is op=60 & RA & Kb & kk & SKIP1 { local k:8 = luaLoadK(Kb); local cnd:1 = RA == k;  if (cnd != kk) goto SKIP1; }
+:EQI RA, SBv is op=61 & RA & SBv & kk & SKIP1 { local cnd:1 = RA == SBv;  if (cnd != kk) goto SKIP1; }
+:LTI RA, SBv is op=62 & RA & SBv & kk & SKIP1 { local cnd:1 = RA s< SBv;  if (cnd != kk) goto SKIP1; }
+:LEI RA, SBv is op=63 & RA & SBv & kk & SKIP1 { local cnd:1 = RA s<= SBv; if (cnd != kk) goto SKIP1; }
+:GTI RA, SBv is op=64 & RA & SBv & kk & SKIP1 { local cnd:1 = RA s> SBv;  if (cnd != kk) goto SKIP1; }
+:GEI RA, SBv is op=65 & RA & SBv & kk & SKIP1 { local cnd:1 = RA s>= SBv; if (cnd != kk) goto SKIP1; }
+
+# 66 TEST A k : if truthy(R[A]) != k then pc++
+:TEST RA is op=66 & RA & kk & SKIP1 { local cnd:1 = RA != 0; if (cnd != kk) goto SKIP1; }
+
+# 67 TESTSET A B k : if truthy(R[B]) != k then pc++ else R[A] := R[B]
+:TESTSET RA, RB is op=67 & RA & RB & kk & SKIP1 { local cnd:1 = RB != 0; if (cnd != kk) goto SKIP1; RA = RB; }
+
+# 68 CALL A B C : R[A],...,R[A+C-2] := R[A](R[A+1],...,R[A+B-1])
+:CALL RA, b, c is op=68 & RA & b & c { local nargs:4 = b; local nres:4 = c; luaCall(RA, nargs, nres); }
+
+# 69 TAILCALL A B C k : return R[A](...)
+:TAILCALL RA, b, c is op=69 & RA & b & c { local nargs:4 = b; luaTailCall(RA, nargs); return [sp]; }
+
+# 70 RETURN A B C k : return R[A],...,R[A+B-2]
+:RETURN RA, b is op=70 & RA & b { local n:4 = b; luaReturn(RA, n); return [sp]; }
+
+# 71 RETURN0 : return (no results)
+:RETURN0 is op=71 { return [sp]; }
+
+# 72 RETURN1 A : return R[A]
+:RETURN1 RA is op=72 & RA { r0 = RA; return [sp]; }
+
+# 73 FORLOOP A Bx : update counters; if loop continues then pc -= Bx
+:FORLOOP RA, BDEST is op=73 & RA & BDEST { local cont:1 = luaForLoop(RA); if (cont != 0) goto BDEST; }
+
+# 74 FORPREP A Bx : prepare counters; if not to run then pc += Bx+1
+:FORPREP RA, FDEST is op=74 & RA & FDEST { local skip:1 = luaForPrep(RA); if (skip != 0) goto FDEST; }
+
+# 75 TFORPREP A Bx : create upvalue for R[A+3]; pc += Bx
+:TFORPREP RA, TPDEST is op=75 & RA & TPDEST { luaTForPrep(RA); goto TPDEST; }
+
+# 76 TFORCALL A C : R[A+4],...,R[A+3+C] := R[A](R[A+1], R[A+2])
+:TFORCALL RA, c is op=76 & RA & c { local n:4 = c; luaTForCall(RA, n); }
+
+# 77 TFORLOOP A Bx : if R[A+2] ~= nil then { R[A] = R[A+2]; pc -= Bx }
+:TFORLOOP RA, BDEST is op=77 & RA & BDEST { local cont:1 = luaTForLoop(RA); if (cont != 0) goto BDEST; }
+
+# 78 SETLIST A B C k : R[A][C+i] := R[A+i], 1 <= i <= B
+:SETLIST RA, b, c is op=78 & RA & b & c { local n:4 = b; local base:4 = c; luaSetList(RA, n, base); }
+
+# 79 CLOSURE A Bx : R[A] := closure(KPROTO[Bx])
+:CLOSURE RA, Pbx is op=79 & RA & Pbx { RA = luaClosure(Pbx); }
+
+# 80 VARARG A C : R[A],...,R[A+C-2] := vararg
+:VARARG RA, c is op=80 & RA & c { local n:4 = c; luaVararg(RA, n); }
+
+# 81 VARARGPREP A : adjust vararg parameters
+:VARARGPREP a is op=81 & a { local n:4 = a; luaVarargPrep(n); }
+
+# 82 EXTRAARG Ax : extra argument for the preceding opcode
+:EXTRAARG ax is op=82 & ax { local e:4 = ax; luaExtraArg(e); }

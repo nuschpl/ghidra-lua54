@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<language_definitions>
+
+  <language processor="Lua"
+            endian="little"
+            size="32"
+            variant="default"
+            version="1.0"
+            slafile="lua54.sla"
+            processorspec="lua54.pspec"
+            id="Lua:LE:32:default">
+    <description>Lua 5.4 precompiled bytecode (luac, signature 1B4C7561 version 0x54)</description>
+    <compiler name="default" spec="lua54.cspec" id="default"/>
+  </language>
+
+</language_definitions>

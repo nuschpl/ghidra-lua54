@@ -1,0 +1,111 @@
+name: build-and-release
+
+# Builds the Lua 5.4 Ghidra extension from a SINGLE source against one or more Ghidra
+# versions, and on a v* tag attaches every produced zip to one GitHub Release. Each zip is
+# stamped with the version of the Ghidra it was built against and installs only into a
+# matching Ghidra (Ghidra's check is an exact application.version match), so we ship one
+# zip per target version rather than a single cross-version file.
+#
+#  * build-public : GitHub-hosted; downloads the pinned PUBLIC release (tag + SHA-256,
+#    verified) -> the zip for external public-release users.
+#  * build-ours   : opt-in; runs only when the repo variable GHIDRA_INSTALL_DIR points at a
+#    TRUSTED self-built Ghidra on a self-hosted runner (RUNNER_LABELS). No download; the
+#    build is hermetic (buildExtension --offline, no third-party deps) -> the zip for that
+#    build.
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GHIDRA_TAG: Ghidra_12.2_build   # public target
+  # SHA-256 of ghidra_12.2_PUBLIC_20261016.zip (from GitHub's release asset digest;
+  # cross-checkable against the NSA release page). A pin = version + this immutable id.
+  GHIDRA_SHA256: "2c2cd776db3c1f6a097ba418922378ac3649cadd5e844a6f5f088ae628a7be67"
+
+jobs:
+  build-public:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.1.0'
+      - name: Download & verify pinned public Ghidra
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/tags/${GHIDRA_TAG}"
+          url=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api" \
+                | jq -r '.assets[] | select(.name | test("ghidra_.*_PUBLIC_.*\\.zip$")) | .browser_download_url' | head -1)
+          [ -n "$url" ] && [ "$url" != "null" ] || { echo "::error::Cannot resolve Ghidra asset for ${GHIDRA_TAG}"; exit 1; }
+          curl -fsSL -o ghidra.zip "$url"
+          if [ -z "${GHIDRA_SHA256}" ]; then
+            echo "::error::GHIDRA_SHA256 is not set. A pin is a version PLUS an immutable identifier; the tag alone is not a pin."
+            echo "Downloaded zip SHA-256 (verify against the NSA release page, then set GHIDRA_SHA256):"
+            sha256sum ghidra.zip
+            exit 1
+          fi
+          echo "${GHIDRA_SHA256}  ghidra.zip" | sha256sum -c -
+          unzip -q ghidra.zip -d ghidra_install
+          dir=$(find "$PWD/ghidra_install" -maxdepth 1 -type d -name 'ghidra_*_PUBLIC*' | head -1)
+          echo "GHIDRA_INSTALL_DIR=$dir" >> "$GITHUB_ENV"
+      - name: Compile SLEIGH
+        run: "${GHIDRA_INSTALL_DIR}/support/sleigh" data/languages/lua54.slaspec
+      - name: Build extension (offline)
+        run: gradle buildExtension -PGHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR}" --offline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ext-public
+          path: dist/*.zip
+          if-no-files-found: error
+
+  build-ours:
+    # Runs only when a trusted self-built Ghidra is configured.
+    if: ${{ vars.GHIDRA_INSTALL_DIR != '' }}
+    runs-on: ${{ vars.RUNNER_LABELS && fromJSON(vars.RUNNER_LABELS) || 'self-hosted' }}
+    env:
+      PROVIDED_GHIDRA: ${{ vars.GHIDRA_INSTALL_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build against trusted Ghidra (hermetic, no download)
+        run: |
+          set -euo pipefail
+          test -x "${PROVIDED_GHIDRA}/support/sleigh" || { echo "::error::GHIDRA_INSTALL_DIR invalid"; exit 1; }
+          "${PROVIDED_GHIDRA}/support/sleigh" data/languages/lua54.slaspec
+          gradle buildExtension -PGHIDRA_INSTALL_DIR="${PROVIDED_GHIDRA}" --offline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ext-ours
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: [ build-public, build-ours ]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect all built zips
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ext-*
+          path: release-zips
+          merge-multiple: true
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-zips/*.zip
+          body: |
+            Lua 5.4 bytecode Ghidra extension — one zip per Ghidra version.
+            Pick the zip whose version matches your Ghidra, then:
+            File ▸ Install Extensions ▸ green **+** ▸ select the zip ▸ restart Ghidra.

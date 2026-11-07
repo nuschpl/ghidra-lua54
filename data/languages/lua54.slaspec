@@ -1,0 +1,8 @@
+#------------------------------------------------------------------------------------
+#  SLEIGH specification for Lua 5.4 precompiled bytecode (luac, version 0x54)
+#
+#  Target: chunks produced by the Lua 5.4.x interpreter (Lua 5.4.7 reference).
+#  Instruction model derived from the real Lua 5.4.7 source (lopcodes.h / lvm.c).
+#------------------------------------------------------------------------------------
+
+@include "lua54.sinc"
