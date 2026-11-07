@@ -28,8 +28,9 @@ runtime dependencies** (see *Supply chain & provenance*).
 ## Install (quickstart)
 
 1. Download the extension zip from this repo's **Releases** (or build it — see *Building*).
-   The zip is named `ghidra_<version>_PUBLIC_<date>_ghidra-lua54.zip`; its Ghidra version
-   must match your Ghidra install.
+   Release assets are named `LuaBytecode-ghidra-extension-<version>.zip` (e.g.
+   `LuaBytecode-ghidra-extension-12.2.zip`); pick the one whose `<version>` matches your
+   Ghidra install.
 2. In Ghidra: **File ▸ Install Extensions**, click the green **+**, select the zip, then
    restart Ghidra.
 3. **File ▸ Import File…** a `.luac`; Ghidra auto-selects the *Lua 5.4 bytecode (luac)*
@@ -188,8 +189,11 @@ export GHIDRA_INSTALL_DIR=/path/to/ghidra_12.2_PUBLIC
 gradle buildExtension -PGHIDRA_INSTALL_DIR="$GHIDRA_INSTALL_DIR"    # package the zip
 ```
 
-This produces the installable extension under `dist/`:
-`dist/ghidra_<version>_PUBLIC_<date>_ghidra-lua54.zip`.
+This produces the installable extension zip under `dist/`
+(`ghidra_<version>_<PUBLIC|DEV>_<date>_LuaBytecode.zip`). **That single command sequence is
+all anyone needs to build the extension from source against their own Ghidra** — no CI, no
+runner. (The CI additionally renames the asset to `LuaBytecode-ghidra-extension-<version>.zip`;
+the contents are identical.)
 
 Notes:
 * `buildExtension` does **not** compile SLEIGH, so run the `sleigh` step first; the
@@ -213,19 +217,43 @@ GitHub Release — one zip per Ghidra version (there is no single cross-version 
   **No download**; the build is hermetic (`buildExtension --offline`, no third-party
   dependencies). Produces the zip for that build.
 
-Both jobs build identical source; each zip is stamped with its build Ghidra's version.
-Enable `build-ours` by setting the two repo variables — no code change.
+There is also a **`derive-12-3`** job: Ghidra 12.3 is not public yet, so when `build-ours`
+is not configured it produces the 12.3 asset by relabeling the 12.2 build's `version` field
+(the two bundles are byte-identical apart from that field). It is skipped automatically when
+`build-ours` provides a genuine 12.3 build.
+
+Both build jobs build identical source; each zip is stamped with its build Ghidra's version.
 
 > **The Ghidra you build against sets the extension's compatibility.** The zip is stamped
 > with that Ghidra's `application.version` and installs only into a Ghidra reporting the
 > same version string (the `PUBLIC`/`DEV` release name is not compared). A `12.2` zip
 > therefore installs into both the public 12.2 release and a from-source 12.2 build.
 
+#### Enabling `build-ours` (self-hosted CI)
+
+`build-ours` builds against a Ghidra install **you** trust, with no download. To enable it:
+
+1. On a machine that has your Ghidra install plus **JDK 25** and **Gradle 9.1**, register it
+   as a repository **self-hosted runner**: *Settings ▸ Actions ▸ Runners ▸ New self-hosted
+   runner*, and run the commands it shows. Note the runner's labels (it gets `self-hosted`
+   by default).
+2. Add two repository **variables** (*Settings ▸ Secrets and variables ▸ Actions ▸
+   Variables*):
+   - `GHIDRA_INSTALL_DIR` — absolute path to that trusted Ghidra on the runner
+     (e.g. `/path/to/ghidra_12.3_DEV`).
+   - `RUNNER_LABELS` — JSON array of the runner's labels, e.g. `["self-hosted"]`.
+3. Push or tag as usual. `build-ours` now runs on that runner and produces
+   `LuaBytecode-ghidra-extension-<that Ghidra's version>.zip`; `derive-12-3` auto-skips, so
+   there is never a duplicate. Keep the runner online for jobs to pick it up.
+
+For a **one-off build from source** (no CI, no runner — the simplest way for anyone to build
+against their own Ghidra), just use the *Building* steps above.
+
 ---
 
 ## Installing
 
-**From a release (recommended):** download the `*_ghidra-lua54.zip` for your Ghidra
+**From a release (recommended):** download the `LuaBytecode-ghidra-extension-<version>.zip` for your Ghidra
 version, then **File ▸ Install Extensions ▸ green +**, select the zip, and restart Ghidra.
 
 **From a local build:** same dialog, pointed at the `dist/…zip` produced by *Building*.
@@ -328,7 +356,7 @@ This extension is deliberately dependency-light; everything it ships is accounte
 
 * **No third-party runtime dependencies.** `build.gradle` declares an empty
   `dependencies` block. The extension bundles only its own compiled jar
-  (`lib/ghidra-lua54.jar`) and runs purely on the Ghidra API. There is nothing to audit
+  (`lib/LuaBytecode.jar`) and runs purely on the Ghidra API. There is nothing to audit
   for transitive CVEs.
 * **Build dependency.** Exactly one: a Ghidra installation (`GHIDRA_INSTALL_DIR`). The
   build against it is **hermetic** — `buildExtension` pulls no third-party dependencies
