@@ -121,8 +121,38 @@ jobs:
           path: dist/*.zip
           if-no-files-found: error
 
+  derive-12.3:
+    # Ghidra 12.3 is not public yet, so there is nothing to download/build against on a
+    # hosted runner. When no trusted self-built 12.3 is configured (build-ours), derive the
+    # 12.3 asset from the 12.2 build by relabeling its version field: the 12.2 and 12.3
+    # extension bundles were verified byte-identical apart from that field. Skipped when
+    # build-ours produces a genuine 12.3 build, so there is never a duplicate 12.3 asset.
+    needs: build-public
+    if: ${{ vars.GHIDRA_INSTALL_DIR == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the 12.2 build
+        uses: actions/download-artifact@v4
+        with:
+          name: ext-public
+          path: in
+      - name: Relabel 12.2 build as 12.3
+        run: |
+          set -euo pipefail
+          src=$(ls in/LuaBytecode-ghidra-extension-*.zip | head -1)
+          rm -rf work out && mkdir work out
+          (cd work && unzip -q "../$src")
+          perl -i -pe 's/^version=.*/version=12.3/' work/LuaBytecode/extension.properties
+          (cd work && zip -qr "../out/LuaBytecode-ghidra-extension-12.3.zip" LuaBytecode)
+          unzip -p out/LuaBytecode-ghidra-extension-12.3.zip 'LuaBytecode/extension.properties' | grep -E '^name=|^version='
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ext-derived-12.3
+          path: out/*.zip
+          if-no-files-found: error
+
   release:
-    needs: [ build-public, build-ours ]
+    needs: [ build-public, build-ours, derive-12.3 ]
     if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
@@ -140,3 +170,12 @@ jobs:
             Lua 5.4 bytecode Ghidra extension — one zip per Ghidra version.
             Pick the zip whose version matches your Ghidra, then:
             File ▸ Install Extensions ▸ green **+** ▸ select the zip ▸ restart Ghidra.
+
+            ---
+
+            **About the 12.3 asset.** Ghidra 12.3 is not yet publicly released, so the 12.3
+            zip is the 12.2 build with its `version` field set to `12.3` — the two bundles
+            are byte-identical apart from that field. This equivalence was validated against
+            a Ghidra 12.3-DEV build at upstream revision `e45e5a62fd`
+            (`Ghidra_12.2_build-544-ge45e5a62fd`). Because 12.3-DEV is a moving target, build
+            the extension from source against your own Ghidra if your 12.3-DEV differs.
