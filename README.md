@@ -1,8 +1,9 @@
-# Lua 5.4 bytecode processor + loader for Ghidra
+# LuaBytecode — a Ghidra extension for Lua 5.4 bytecode
 
-A standalone Ghidra extension that disassembles and (partially) decompiles **Lua 5.4
-precompiled bytecode** — the output of `luac` / `string.dump`, i.e. the `lundump`
-chunk format.
+A standalone **Ghidra extension (plugin)** that lets Ghidra open, disassemble, and
+(partially) decompile **compiled Lua 5.4 bytecode** — `.luac` files produced by `luac` /
+`string.dump`, i.e. the `lundump` chunk format. Install it, then import a `.luac` like any
+other binary; no knowledge of Ghidra internals is required to use it.
 
 * **Target:** chunks produced by the **Lua 5.4.x** interpreter. The opcode set and
   instruction encoding were taken verbatim from the **Lua 5.4.7** reference source

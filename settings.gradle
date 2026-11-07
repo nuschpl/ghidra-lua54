@@ -1,0 +1,3 @@
+// Extension/module name — drives the built zip name and the folder inside it.
+// (The GitHub repo may be named differently for discoverability.)
+rootProject.name = 'LuaBytecode'
